@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import stock from "./data/stock"; // same format as before
 
@@ -6,6 +6,23 @@ function App() {
     const [input, setInput] = useState("");
     const [messages, setMessages] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [apiKeyStatus, setApiKeyStatus] = useState("unknown");
+
+    // Check API key on component mount
+    useEffect(() => {
+        // Check if API key is available
+        const openaiKey = import.meta.env.VITE_OPENAI_API_KEY;
+        if (openaiKey) {
+            console.log(
+                "API key available (masked):",
+                openaiKey.substring(0, 10) + "..."
+            );
+            setApiKeyStatus("available");
+        } else {
+            console.warn("API key not found in environment variables");
+            setApiKeyStatus("missing");
+        }
+    }, []);
 
     const sendMessage = async () => {
         if (!input.trim()) return;
@@ -15,7 +32,6 @@ function App() {
             const newMessages = [...messages, { role: "user", content: input }];
             setMessages(newMessages);
 
-            const userMessage = input;
             setInput(""); // Clear input after sending
 
             // Set loading state to true before API call
@@ -30,16 +46,14 @@ function App() {
                     )
                     .join("\n");
 
-            const res = await axios.post("http://localhost:11434/api/chat", {
-                model: "nous-hermes2",
-                messages: [
-                    {
-                        role: "system",
-                        content: `אתה נציג שירות לקוחות ישראלי בחנות אונליין. 
+            // Prepare conversation history for OpenAI
+            const systemMessage = {
+                role: "system",
+                content: `אתה נציג שירות לקוחות ישראלי בחנות אונליין. 
 
 כללי שיחה:
 - דבר בעברית טבעית ויומיומית, לא ספרותית או פורמלית מדי
-- השתמש במשפטים קצרים וישירות אם צריך מידע נוסף
+- השתמש במשפטים קצרים וישירים
 - הגב באופן אישי ואנושי
 - השתמש באימוג'ים במידה 😊
 - כשמתאים, השתמש בביטויים כמו "מעולה", "בדיוק", "אין בעיה", "שמח לעזור"
@@ -67,26 +81,79 @@ function App() {
 
 המוצרים במלאי:
 ${contextSummary}`,
+            };
+
+            // Full conversation history including system message
+            const fullConversation = [
+                systemMessage,
+                ...newMessages.map((msg) => ({
+                    role: msg.role,
+                    content: msg.content,
+                })),
+            ];
+
+            // Get API key, with fallbacks
+            const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+
+            console.log(
+                "Using API endpoint: https://api.openai.com/v1/chat/completions"
+            );
+            console.log("API key status:", apiKeyStatus);
+
+            if (!apiKey) {
+                throw new Error(
+                    "API key not available in environment variables"
+                );
+            }
+
+            // OpenAI API call
+            const res = await axios.post(
+                "https://api.openai.com/v1/chat/completions",
+                {
+                    model: "gpt-3.5-turbo", // You can use other models like "gpt-4" if available
+                    messages: fullConversation,
+                    temperature: 0.7,
+                    max_tokens: 500,
+                },
+                {
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${apiKey}`,
                     },
-                    {
-                        role: "user",
-                        content: userMessage,
-                    },
-                ],
-                stream: false,
-            });
+                }
+            );
 
             // Add bot response to chat history
             setMessages([
                 ...newMessages,
-                { role: "assistant", content: res.data.message.content },
+                {
+                    role: "assistant",
+                    content: res.data.choices[0].message.content,
+                },
             ]);
         } catch (error) {
-            console.error(error);
+            console.error("Error details:", error);
+
+            // More informative error message
+            let errorMessage = "שגיאה בתגובה מהמודל.";
+
+            if (error.response) {
+                console.error("Response status:", error.response.status);
+                console.error("Response data:", error.response.data);
+
+                if (error.response.status === 401) {
+                    errorMessage =
+                        "שגיאת אימות: המפתח API אינו חוקי או פג תוקף.";
+                } else if (error.response.status === 429) {
+                    errorMessage =
+                        "הגעת למגבלת השימוש באי-פי-איי. נסה שוב מאוחר יותר.";
+                }
+            }
+
             // Add error message to chat
             setMessages([
                 ...messages,
-                { role: "assistant", content: "שגיאה בתגובה מהמודל." },
+                { role: "assistant", content: errorMessage },
             ]);
         } finally {
             // Set loading state to false after API call (success or error)
@@ -121,6 +188,20 @@ ${contextSummary}`,
             }}
         >
             <h2 style={{ color: "#333" }}>🤖 צ'אט שירות לקוחות</h2>
+
+            {apiKeyStatus === "missing" && (
+                <div
+                    style={{
+                        backgroundColor: "#ffebee",
+                        color: "#c62828",
+                        padding: "10px",
+                        borderRadius: "6px",
+                        marginBottom: "10px",
+                    }}
+                >
+                    <strong>אזהרה:</strong> מפתח API חסר. בדוק את קובץ .env
+                </div>
+            )}
 
             <div
                 style={{
