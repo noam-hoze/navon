@@ -2,25 +2,45 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import stock from "./data/stock"; // same format as before
 
-function App() {
+// Default props for standalone mode
+const defaultProps = {
+    position: "right",
+    apiUrl: "https://api.openai.com/v1/chat/completions",
+};
+
+function App({
+    position = defaultProps.position,
+    apiUrl = defaultProps.apiUrl,
+}) {
     const [input, setInput] = useState("");
     const [messages, setMessages] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [apiKeyStatus, setApiKeyStatus] = useState("unknown");
+    const [isWordPress, setIsWordPress] = useState(false);
 
-    // Check API key on component mount
+    // Check if running in WordPress environment
     useEffect(() => {
-        // Check if API key is available
-        const openaiKey = import.meta.env.VITE_OPENAI_API_KEY;
-        if (openaiKey) {
-            console.log(
-                "API key available (masked):",
-                openaiKey.substring(0, 10) + "..."
+        // Check if navonSettings exists in window (added by WordPress)
+        if (window.navonSettings) {
+            setIsWordPress(true);
+            setApiKeyStatus(
+                window.navonSettings.settings?.openai_api_key
+                    ? "available"
+                    : "missing"
             );
-            setApiKeyStatus("available");
         } else {
-            console.warn("API key not found in environment variables");
-            setApiKeyStatus("missing");
+            // Check if API key is available in standalone mode
+            const openaiKey = import.meta.env.VITE_OPENAI_API_KEY;
+            if (openaiKey) {
+                console.log(
+                    "API key available (masked):",
+                    openaiKey.substring(0, 10) + "..."
+                );
+                setApiKeyStatus("available");
+            } else {
+                console.warn("API key not found in environment variables");
+                setApiKeyStatus("missing");
+            }
         }
     }, []);
 
@@ -37,19 +57,49 @@ function App() {
             // Set loading state to true before API call
             setIsLoading(true);
 
-            const contextSummary =
-                "להלן רשימת המוצרים הקיימים במלאי:\n" +
-                stock
-                    .map(
-                        (p) =>
-                            `• ${p.name} (${p.category}), מחיר: ₪${p.price}, מלאי כולל: ${p.stock}`
-                    )
-                    .join("\n");
+            let response;
 
-            // Prepare conversation history for OpenAI
-            const systemMessage = {
-                role: "system",
-                content: `אתה נציג שירות לקוחות ישראלי בחנות אונליין. 
+            if (isWordPress) {
+                // WordPress mode: Use the WordPress REST API endpoint
+                response = await axios.post(
+                    window.navonSettings.apiUrl,
+                    {
+                        messages: newMessages.map((msg) => ({
+                            role: msg.role,
+                            content: msg.content,
+                        })),
+                    },
+                    {
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-WP-Nonce": window.navonSettings.nonce,
+                        },
+                    }
+                );
+
+                // Add bot response to chat history - WordPress API proxy formats the response
+                setMessages([
+                    ...newMessages,
+                    {
+                        role: "assistant",
+                        content: response.data.choices[0].message.content,
+                    },
+                ]);
+            } else {
+                // Standalone mode: Use direct OpenAI connection
+                const contextSummary =
+                    "להלן רשימת המוצרים הקיימים במלאי:\n" +
+                    stock
+                        .map(
+                            (p) =>
+                                `• ${p.name} (${p.category}), מחיר: ₪${p.price}, מלאי כולל: ${p.stock}`
+                        )
+                        .join("\n");
+
+                // Prepare conversation history for OpenAI
+                const systemMessage = {
+                    role: "system",
+                    content: `אתה נציג שירות לקוחות ישראלי בחנות אונליין. 
 
 כללי שיחה:
 - דבר בעברית טבעית ויומיומית, לא ספרותית או פורמלית מדי
@@ -81,56 +131,55 @@ function App() {
 
 המוצרים במלאי:
 ${contextSummary}`,
-            };
+                };
 
-            // Full conversation history including system message
-            const fullConversation = [
-                systemMessage,
-                ...newMessages.map((msg) => ({
-                    role: msg.role,
-                    content: msg.content,
-                })),
-            ];
+                // Full conversation history including system message
+                const fullConversation = [
+                    systemMessage,
+                    ...newMessages.map((msg) => ({
+                        role: msg.role,
+                        content: msg.content,
+                    })),
+                ];
 
-            // Get API key, with fallbacks
-            const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+                // Get API key, with fallbacks
+                const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
 
-            console.log(
-                "Using API endpoint: https://api.openai.com/v1/chat/completions"
-            );
-            console.log("API key status:", apiKeyStatus);
+                console.log("Using API endpoint:", apiUrl);
+                console.log("API key status:", apiKeyStatus);
 
-            if (!apiKey) {
-                throw new Error(
-                    "API key not available in environment variables"
-                );
-            }
-
-            // OpenAI API call
-            const res = await axios.post(
-                "https://api.openai.com/v1/chat/completions",
-                {
-                    model: "gpt-3.5-turbo", // You can use other models like "gpt-4" if available
-                    messages: fullConversation,
-                    temperature: 0.7,
-                    max_tokens: 500,
-                },
-                {
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${apiKey}`,
-                    },
+                if (!apiKey) {
+                    throw new Error(
+                        "API key not available in environment variables"
+                    );
                 }
-            );
 
-            // Add bot response to chat history
-            setMessages([
-                ...newMessages,
-                {
-                    role: "assistant",
-                    content: res.data.choices[0].message.content,
-                },
-            ]);
+                // OpenAI API call
+                response = await axios.post(
+                    apiUrl,
+                    {
+                        model: "gpt-3.5-turbo", // You can use other models like "gpt-4" if available
+                        messages: fullConversation,
+                        temperature: 0.7,
+                        max_tokens: 500,
+                    },
+                    {
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${apiKey}`,
+                        },
+                    }
+                );
+
+                // Add bot response to chat history
+                setMessages([
+                    ...newMessages,
+                    {
+                        role: "assistant",
+                        content: response.data.choices[0].message.content,
+                    },
+                ]);
+            }
         } catch (error) {
             console.error("Error details:", error);
 
@@ -168,25 +217,52 @@ ${contextSummary}`,
         }
     };
 
+    // Get position-specific styles
+    const getPositionStyles = () => {
+        const baseStyles = {
+            position: "fixed",
+            width: "400px",
+            height: "100vh",
+            background: "#fff",
+            padding: "1rem",
+            fontFamily: "sans-serif",
+            direction: "rtl",
+            textAlign: "right",
+            boxShadow: "0 0 10px rgba(0, 0, 0, 0.2)",
+            overflowY: "auto",
+            zIndex: 9999,
+            color: "black",
+            top: 0,
+        };
+
+        // Apply position-specific styles
+        switch (position) {
+            case "left":
+                return {
+                    ...baseStyles,
+                    left: 0,
+                    borderRight: "1px solid #ccc",
+                };
+            case "center":
+                return {
+                    ...baseStyles,
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    borderLeft: "1px solid #ccc",
+                    borderRight: "1px solid #ccc",
+                };
+            case "right":
+            default:
+                return {
+                    ...baseStyles,
+                    right: 0,
+                    borderLeft: "1px solid #ccc",
+                };
+        }
+    };
+
     return (
-        <div
-            style={{
-                position: "fixed",
-                top: 0,
-                right: 0,
-                width: "400px",
-                height: "100vh",
-                background: "#fff",
-                padding: "1rem",
-                fontFamily: "sans-serif",
-                direction: "rtl",
-                textAlign: "right",
-                boxShadow: "-4px 0 10px rgba(0, 0, 0, 0.2)",
-                overflowY: "auto",
-                zIndex: 9999,
-                color: "black",
-            }}
-        >
+        <div style={getPositionStyles()}>
             <h2 style={{ color: "#333" }}>🤖 צ'אט שירות לקוחות</h2>
 
             {apiKeyStatus === "missing" && (
@@ -199,7 +275,10 @@ ${contextSummary}`,
                         marginBottom: "10px",
                     }}
                 >
-                    <strong>אזהרה:</strong> מפתח API חסר. בדוק את קובץ .env
+                    <strong>אזהרה:</strong>{" "}
+                    {isWordPress
+                        ? "מפתח API לא מוגדר בהגדרות WordPress"
+                        : "מפתח API חסר, בדוק את קובץ .env"}
                 </div>
             )}
 
