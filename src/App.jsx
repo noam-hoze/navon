@@ -1,6 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import stock from "./data/stock"; // same format as before
+import "./App.css"; // Assuming App.css might have relevant styles, keep it
+import "./index.css"; // Import index.css for global styles
 
 // Default props for standalone mode
 const defaultProps = {
@@ -17,6 +19,8 @@ function App({
     const [isLoading, setIsLoading] = useState(false);
     const [apiKeyStatus, setApiKeyStatus] = useState("unknown");
     const [isWordPress, setIsWordPress] = useState(false);
+    const [isOpen, setIsOpen] = useState(false); // State for chat visibility
+    const messagesEndRef = useRef(null); // Ref for scrolling
 
     // Check if running in WordPress environment
     useEffect(() => {
@@ -217,198 +221,93 @@ ${contextSummary}`,
         }
     };
 
-    // Get position-specific styles
-    const getPositionStyles = () => {
-        const baseStyles = {
-            position: "fixed",
-            width: "400px",
-            height: "100vh",
-            background: "#fff",
-            padding: "1rem",
-            fontFamily: "sans-serif",
-            direction: "rtl",
-            textAlign: "right",
-            boxShadow: "0 0 10px rgba(0, 0, 0, 0.2)",
-            overflowY: "auto",
-            zIndex: 9999,
-            color: "black",
-            top: 0,
-        };
-
-        // Apply position-specific styles
-        switch (position) {
-            case "left":
-                return {
-                    ...baseStyles,
-                    left: 0,
-                    borderRight: "1px solid #ccc",
-                };
-            case "center":
-                return {
-                    ...baseStyles,
-                    left: "50%",
-                    transform: "translateX(-50%)",
-                    borderLeft: "1px solid #ccc",
-                    borderRight: "1px solid #ccc",
-                };
-            case "right":
-            default:
-                return {
-                    ...baseStyles,
-                    right: 0,
-                    borderLeft: "1px solid #ccc",
-                };
-        }
+    // --- Function to toggle chat visibility ---
+    const toggleChat = () => {
+        setIsOpen(!isOpen);
     };
 
+    // --- Scroll to bottom effect ---
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages]);
+
     return (
-        <div style={getPositionStyles()}>
-            <h2 style={{ color: "#333" }}>🤖 צ'אט שירות לקוחות</h2>
-
-            {apiKeyStatus === "missing" && (
-                <div
-                    style={{
-                        backgroundColor: "#ffebee",
-                        color: "#c62828",
-                        padding: "10px",
-                        borderRadius: "6px",
-                        marginBottom: "10px",
-                    }}
-                >
-                    <strong>אזהרה:</strong>{" "}
-                    {isWordPress
-                        ? "מפתח API לא מוגדר בהגדרות WordPress"
-                        : "מפתח API חסר, בדוק את קובץ .env"}
-                </div>
-            )}
-
-            <div
-                style={{
-                    marginBottom: "1rem",
-                    maxHeight: "calc(100vh - 150px)",
-                    overflowY: "auto",
-                }}
+        <>
+            {/* Toggle Button - always visible */}
+            <button
+                onClick={toggleChat}
+                className="navon-chat-toggle-button"
+                aria-label={isOpen ? "Close Chat" : "Open Chat"}
             >
-                {messages.map((msg, index) => (
-                    <div
-                        key={index}
-                        style={{
-                            backgroundColor:
-                                msg.role === "user" ? "#e1f5fe" : "#fff8e1",
-                            padding: "10px",
-                            borderRadius: "10px",
-                            marginBottom: "10px",
-                        }}
-                    >
-                        <strong>
-                            {msg.role === "user" ? "אתה:" : "נבון:"}
-                        </strong>
-                        <p>{msg.content}</p>
-                    </div>
-                ))}
+                {/* Placeholder Icon - Replace with SVG or icon font later */}
+                {isOpen ? "✕" : "💬"}
+            </button>
 
-                {/* Loading indicator */}
-                {isLoading && (
-                    <div
-                        style={{
-                            backgroundColor: "#fff8e1",
-                            padding: "10px",
-                            borderRadius: "10px",
-                            marginBottom: "10px",
-                        }}
-                    >
-                        <strong>נבון:</strong>
-                        <div className="typing-indicator">
-                            <span
-                                style={{
-                                    display: "inline-block",
-                                    width: "8px",
-                                    height: "8px",
-                                    backgroundColor: "#333",
-                                    borderRadius: "50%",
-                                    margin: "0 2px",
-                                    animation: "typing 1s infinite ease-in-out",
-                                    animationDelay: "0s",
-                                }}
-                            ></span>
-                            <span
-                                style={{
-                                    display: "inline-block",
-                                    width: "8px",
-                                    height: "8px",
-                                    backgroundColor: "#333",
-                                    borderRadius: "50%",
-                                    margin: "0 2px",
-                                    animation: "typing 1s infinite ease-in-out",
-                                    animationDelay: "0.2s",
-                                }}
-                            ></span>
-                            <span
-                                style={{
-                                    display: "inline-block",
-                                    width: "8px",
-                                    height: "8px",
-                                    backgroundColor: "#333",
-                                    borderRadius: "50%",
-                                    margin: "0 2px",
-                                    animation: "typing 1s infinite ease-in-out",
-                                    animationDelay: "0.4s",
-                                }}
-                            ></span>
+            {/* Chat Bubble Container */}
+            <div
+                className={`navon-chat-bubble-container ${
+                    isOpen ? "is-open" : ""
+                }`}
+            >
+                {/* Existing Chat UI goes here */}
+                <div className="navon-chat-header">
+                    {/* Optional Header? */}
+                    <span>Navon Chat</span>
+                    <button onClick={toggleChat} className="navon-close-button">
+                        ✕
+                    </button>
+                </div>
+
+                <div className="navon-messages-list">
+                    {messages.map((msg, index) => (
+                        <div
+                            key={index}
+                            className={`navon-message ${msg.role}`}
+                        >
+                            {/* Basic rendering, could be improved */}
+                            <p>{msg.content}</p>
                         </div>
-                        <style>
-                            {`
-                                @keyframes typing {
-                                    0% { transform: translateY(0px); }
-                                    50% { transform: translateY(-5px); }
-                                    100% { transform: translateY(0px); }
-                                }
-                            `}
-                        </style>
+                    ))}
+                    {isLoading && (
+                        <div className="navon-message assistant loading">
+                            <p>מקליד...</p> {/* Typing indicator */}
+                        </div>
+                    )}
+                    {/* Element to scroll to */}
+                    <div ref={messagesEndRef} />
+                </div>
+
+                {apiKeyStatus === "missing" && (
+                    <div className="navon-api-key-warning">
+                        <p>
+                            שים לב: מפתח API אינו זמין. הצ'אט לא יוכל לשלוח
+                            הודעות.
+                        </p>
                     </div>
                 )}
-            </div>
 
-            <input
-                type="text"
-                value={input}
-                placeholder="כתוב את ההודעה שלך..."
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                disabled={isLoading}
-                style={{
-                    width: "100%",
-                    padding: "0.5rem",
-                    fontSize: "1rem",
-                    marginTop: "1rem",
-                    direction: "rtl",
-                    textAlign: "right",
-                    color: "black",
-                    background: isLoading ? "#f0f0f0" : "#eee",
-                    border: "none",
-                    borderRadius: "6px",
-                    cursor: isLoading ? "not-allowed" : "text",
-                }}
-            />
-            <button
-                onClick={sendMessage}
-                disabled={isLoading}
-                style={{
-                    marginTop: "1rem",
-                    padding: "0.5rem 1rem",
-                    width: "100%",
-                    background: isLoading ? "#90caf9" : "#2196f3",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "6px",
-                    cursor: isLoading ? "not-allowed" : "pointer",
-                    fontSize: "1rem",
-                    opacity: isLoading ? 0.7 : 1,
-                }}
-            >
-                {isLoading ? "מחכה לתגובה..." : "שלח"}
-            </button>
-        </div>
+                <div className="navon-input-area">
+                    <input
+                        type="text"
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder="הקלד הודעה..."
+                        disabled={isLoading || apiKeyStatus === "missing"}
+                    />
+                    <button
+                        onClick={sendMessage}
+                        disabled={
+                            isLoading ||
+                            !input.trim() ||
+                            apiKeyStatus === "missing"
+                        }
+                    >
+                        שלח
+                    </button>
+                </div>
+            </div>
+        </>
     );
 }
 
